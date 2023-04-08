@@ -10,8 +10,10 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * <p>
@@ -40,17 +42,38 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             return Result.ok(shop);
         }
 
+        if("".equals(shopJson)){
+            //返回一个错误信息
+            return Result.fail("店铺不存在！");
+        }
+
 //        4. 不存在，根据id查询数据库
         Shop shop = getById(id);
 
 //        5. 不存在，返回错误
-        if(Objects.isNull(shop))
+        if(Objects.isNull(shop)) {
+//            缓存空对象
+            stringRedisTemplate.opsForValue().set("cache:shop:"+id,"",2L, TimeUnit.MINUTES);
             return Result.fail("店铺不存在！");
+        }
 
 //        6. 存在，写入redis
-        stringRedisTemplate.opsForValue().set("cache:shop:"+id,JSONUtil.toJsonStr(shop));
+        stringRedisTemplate.opsForValue().set("cache:shop:"+id,JSONUtil.toJsonStr(shop),30L, TimeUnit.MINUTES);
 
         return Result.ok(shop);
 
+    }
+
+    @Override
+    @Transactional
+    public Result update(Shop shop) {
+
+//        1. 更新数据库
+        updateById(shop);
+
+//        2. 删除缓存
+        stringRedisTemplate.delete("cache:shop:"+shop.getId());
+
+        return Result.ok();
     }
 }
